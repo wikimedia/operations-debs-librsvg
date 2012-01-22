@@ -1,0 +1,26 @@
+Index: librsvg-2.26.3/rsvg-convert.c
+===================================================================
+--- librsvg-2.26.3.orig/rsvg-convert.c	2012-01-20 13:10:59.489183785 -0800
++++ librsvg-2.26.3/rsvg-convert.c	2012-01-20 13:11:40.745765930 -0800
+@@ -190,7 +190,7 @@
+     g_option_context_free (g_option_context);
+ 
+     if (bVersion != 0) {
+-        printf (_("rsvg-convert version %s\n"), VERSION);
++        printf (_("rsvg-convert version %s (Wikimedia)\n"), VERSION);
+         return 0;
+     }
+ 
+Index: librsvg-2.26.3/rsvg.in
+===================================================================
+--- librsvg-2.26.3.orig/rsvg.in	2012-01-20 13:12:14.258241311 -0800
++++ librsvg-2.26.3/rsvg.in	2012-01-20 13:12:38.362584563 -0800
+@@ -45,7 +45,7 @@
+     
+     for o, a in opts:
+         if o in ("-v", "--version"):
+-            print "rsvg version %s" % ("@VERSION@")
++            print "rsvg version %s (Wikimedia)" % ("@VERSION@")
+             sys.exit(0)
+         elif o in ("--usage"):
+             usage()

@@ -1,3 +1,11 @@
+librsvg (2.26.3-0wm1) lucid-wikimedia; urgency=low
+
+  * Refreshed and re-added wikimedia-brand.patch from Hardy
+  * Added a patch to allow external file references to be disabled with a
+    command-line option.
+
+ -- Tim Starling <tstarling@wikimedia.org>  Sun, 22 Jan 2012 13:16:53 -0800
+
 librsvg (2.26.3-0ubuntu1.1) lucid-security; urgency=low
 
   * SECURITY UPDATE: fix arbitrary execution of fake node types.

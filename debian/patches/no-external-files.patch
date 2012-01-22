@@ -1,0 +1,201 @@
+Index: librsvg-2.26.3/rsvg-base-file-util.c
+===================================================================
+--- librsvg-2.26.3.orig/rsvg-base-file-util.c	2012-01-22 12:48:11.627106466 -0800
++++ librsvg-2.26.3/rsvg-base-file-util.c	2012-01-22 12:49:01.523843649 -0800
+@@ -91,7 +91,7 @@
+     rsvg_return_val_if_fail (file_name != NULL, NULL, error);
+ 
+     base_uri = rsvg_get_base_uri_from_filename (file_name);
+-    f = _rsvg_acquire_xlink_href_resource (file_name, base_uri, error);
++    f = _rsvg_acquire_xlink_href_resource_insecure (file_name, base_uri, error);
+ 
+     if (f) {
+         handle = rsvg_handle_new ();
+Index: librsvg-2.26.3/rsvg-base.c
+===================================================================
+--- librsvg-2.26.3.orig/rsvg-base.c	2012-01-22 12:48:11.627106466 -0800
++++ librsvg-2.26.3/rsvg-base.c	2012-01-22 12:49:01.523843649 -0800
+@@ -64,6 +64,8 @@
+ double rsvg_internal_dpi_x = RSVG_DEFAULT_DPI_X;
+ double rsvg_internal_dpi_y = RSVG_DEFAULT_DPI_Y;
+ 
++gboolean rsvg_allow_external_files = TRUE;
++
+ static xmlSAXHandler rsvgSAXHandlerStruct;
+ static gboolean rsvgSAXHandlerStructInited = FALSE;
+ 
+@@ -1536,6 +1538,24 @@
+     return rsvg_defs_lookup (handle->priv->defs, id) != NULL;
+ }
+ 
++/**
++ * rsvg_set_allow_external_files
++ * @allow: Whether to allow external files
++ *
++ * Sets a global variable enabling or disabling file or other URI
++ * references within SVG files.
++ *
++ * Returns: the previous value of the variable
++ *
++ * Since: Wikimedia patch
++ */
++gboolean rsvg_set_allow_external_files (gboolean allow)
++{
++    gboolean previous = rsvg_allow_external_files;
++    rsvg_allow_external_files = allow;
++    return previous;
++}
++
+ /** 
+  * rsvg_set_default_dpi
+  * @dpi: Dots Per Inch (aka Pixels Per Inch)
+Index: librsvg-2.26.3/rsvg-file-util.c
+===================================================================
+--- librsvg-2.26.3.orig/rsvg-file-util.c	2012-01-22 12:48:11.627106466 -0800
++++ librsvg-2.26.3/rsvg-file-util.c	2012-01-22 12:49:01.527843705 -0800
+@@ -189,7 +189,7 @@
+     GByteArray *f;
+     GString *base_uri = g_string_new (file_name);
+ 
+-    f = _rsvg_acquire_xlink_href_resource (file_name, base_uri->str, error);
++    f = _rsvg_acquire_xlink_href_resource_insecure (file_name, base_uri->str, error);
+ 
+     if (f) {
+         pixbuf = rsvg_pixbuf_from_stdio_file_with_size_data (f, data, base_uri->str, error);
+Index: librsvg-2.26.3/rsvg-image.c
+===================================================================
+--- librsvg-2.26.3.orig/rsvg-image.c	2012-01-22 12:48:11.627106466 -0800
++++ librsvg-2.26.3/rsvg-image.c	2012-01-22 12:49:01.527843705 -0800
+@@ -359,6 +359,24 @@
+ GByteArray *
+ _rsvg_acquire_xlink_href_resource (const char *href, const char *base_uri, GError ** err)
+ {
++    if (!(href && *href))
++        return NULL;
++
++    if (rsvg_allow_external_files)
++        return _rsvg_acquire_xlink_href_resource_insecure (href, base_uri, err);
++    else {
++        /* No external files: allow only the data: protocol */
++        if (!strncmp (href, "data:", 5))
++            return rsvg_acquire_base64_resource (href, NULL);
++        else
++            return NULL;
++    }
++}
++
++
++GByteArray *
++_rsvg_acquire_xlink_href_resource_insecure (const char *href, const char *base_uri, GError ** err)
++{
+     GByteArray *arr = NULL;
+ 
+     if (!(href && *href))
+@@ -378,6 +396,11 @@
+     return arr;
+ }
+ 
++/**
++ * Create a new pixbuf from a given URL.
++ * Note that with external files disabled, this will only allow data: URIs,
++ * because this function is called for an externally referenced image
++ */
+ GdkPixbuf *
+ rsvg_pixbuf_new_from_href (const char *href, const char *base_uri, GError ** error)
+ {
+Index: librsvg-2.26.3/rsvg-private.h
+===================================================================
+--- librsvg-2.26.3.orig/rsvg-private.h	2012-01-22 12:48:11.627106466 -0800
++++ librsvg-2.26.3/rsvg-private.h	2012-01-22 12:49:01.527843705 -0800
+@@ -43,6 +43,8 @@
+ 
+ G_BEGIN_DECLS 
+ 
++gboolean rsvg_allow_external_files;
++
+ typedef struct RsvgSaxHandler RsvgSaxHandler;
+ typedef struct RsvgDrawingCtx RsvgDrawingCtx;
+ typedef struct RsvgRender RsvgRender;
+@@ -287,6 +289,8 @@
+ gchar       *rsvg_get_base_uri_from_filename    (const gchar * file_name);
+ GByteArray  *_rsvg_acquire_xlink_href_resource  (const char *href,
+                                                  const char *base_uri, GError ** err);
++GByteArray  *_rsvg_acquire_xlink_href_resource_insecure  (const char *href,
++                                                          const char *base_uri, GError ** err);
+ 
+ void rsvg_pop_discrete_layer    (RsvgDrawingCtx * ctx);
+ void rsvg_push_discrete_layer   (RsvgDrawingCtx * ctx);
+Index: librsvg-2.26.3/rsvg.h
+===================================================================
+--- librsvg-2.26.3.orig/rsvg.h	2012-01-22 12:48:11.627106466 -0800
++++ librsvg-2.26.3/rsvg.h	2012-01-22 12:49:01.527843705 -0800
+@@ -110,6 +110,8 @@
+ void rsvg_init (void);
+ void rsvg_term (void);
+ 
++gboolean rsvg_set_allow_external_files	(gboolean allow);
++
+ void rsvg_set_default_dpi	(double dpi);
+ void rsvg_set_default_dpi_x_y	(double dpi_x, double dpi_y);
+ 
+Index: librsvg-2.26.3/test-display.c
+===================================================================
+--- librsvg-2.26.3.orig/test-display.c	2012-01-22 12:48:11.627106466 -0800
++++ librsvg-2.26.3/test-display.c	2012-01-22 12:49:01.527843705 -0800
+@@ -855,7 +855,7 @@
+         if (base_uri == NULL)
+             base_uri = (char *) args[0];
+ 
+-        info.svg_bytes = _rsvg_acquire_xlink_href_resource (args[0], base_uri, NULL);
++        info.svg_bytes = _rsvg_acquire_xlink_href_resource_insecure (args[0], base_uri, NULL);
+     } else {
+         info.svg_bytes = g_byte_array_new ();
+ 
+Index: librsvg-2.26.3/rsvg-convert.c
+===================================================================
+--- librsvg-2.26.3.orig/rsvg-convert.c	2012-01-22 12:48:11.631106528 -0800
++++ librsvg-2.26.3/rsvg-convert.c	2012-01-22 12:49:01.527843705 -0800
+@@ -127,6 +127,7 @@
+     int width = -1;
+     int height = -1;
+     int bVersion = 0;
++    int bNoExternalFiles = 0;
+     char *format = NULL;
+     char *output = NULL;
+     int keep_aspect_ratio = FALSE;
+@@ -170,6 +171,7 @@
+          N_("set the background color [optional; defaults to None]"), N_("[black, white, #abccee, #aaa...]")},
+         {"version", 'v', 0, G_OPTION_ARG_NONE, &bVersion, N_("show version information"), NULL},
+         {"base-uri", 'b', 0, G_OPTION_ARG_STRING, &base_uri, N_("base uri"), NULL},
++        {"no-external-files", '\0', 0, G_OPTION_ARG_NONE, &bNoExternalFiles, N_("do not allow external files")},
+         {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &args, NULL, N_("[FILE...]")},
+         {NULL}
+     };
+@@ -219,6 +221,7 @@
+ 
+     rsvg_init ();
+     rsvg_set_default_dpi_x_y (dpi_x, dpi_y);
++    rsvg_set_allow_external_files (!bNoExternalFiles);
+ 
+     for (i = 0; i < n_args; i++) {
+ 
+Index: librsvg-2.26.3/librsvg.def
+===================================================================
+--- librsvg-2.26.3.orig/librsvg.def	2012-01-22 13:07:17.135553149 -0800
++++ librsvg-2.26.3/librsvg.def	2012-01-22 13:08:52.160925003 -0800
+@@ -2,6 +2,7 @@
+ rsvg_error_get_type
+ rsvg_init
+ rsvg_term
++rsvg_set_allow_external_files
+ rsvg_set_default_dpi
+ rsvg_set_default_dpi_x_y
+ rsvg_handle_set_dpi
+@@ -34,6 +35,7 @@
+ rsvg_handle_get_type
+ _rsvg_size_callback
+ _rsvg_acquire_xlink_href_resource
++_rsvg_acquire_xlink_href_resource_insecure
+ _rsvg_register_types
+ rsvg_defs_lookup
+ rsvg_pixbuf_from_data_with_size_data
