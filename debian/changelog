@@ -1,3 +1,17 @@
+librsvg (2.36.1-1wm1) precise-wikimedia; urgency=low
+
+  * Added a rewritten version of no-external-files.patch, submitted upstream
+    at https://bugzilla.gnome.org/show_bug.cgi?id=686346 . Will hopefully be
+    accepted and so will be unnecessary next time we update
+
+  * Re-added wikimedia-brand.patch. Note that this patch only exists so that
+    the presence of the security patch can easily be confirmed. It can be
+    removed once the security patch is accepted upstream.
+
+  * Refreshed 10_rsvg-gz.patch
+
+ -- Tim Starling <tstarling@wikimedia.org>  Thu, 18 Oct 2012 15:29:53 +1100
+
 librsvg (2.36.1-0ubuntu1) precise-proposed; urgency=low
 
   * New upstream release:

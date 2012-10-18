@@ -7,6 +7,7 @@ librsvg-2.so.2 librsvg2-2 #MINVER#
  rsvg_error_get_type@Base 2.14.4
  rsvg_error_quark@Base 2.14.4
  rsvg_handle_close@Base 2.14.4
+ rsvg_handle_fill_from_file@Base 2.36.1-1wm1
  rsvg_handle_flags_get_type@Base 2.32.0
  rsvg_handle_free@Base 2.14.4
  rsvg_handle_get_base_uri@Base 2.14.4
@@ -34,9 +35,11 @@ librsvg-2.so.2 librsvg2-2 #MINVER#
  rsvg_handle_set_base_uri@Base 2.14.4
  rsvg_handle_set_dpi@Base 2.14.4
  rsvg_handle_set_dpi_x_y@Base 2.14.4
+ rsvg_handle_set_load_policy@Base 2.36.1-1wm1
  rsvg_handle_set_size_callback@Base 2.14.4
  rsvg_handle_write@Base 2.14.4
  rsvg_init@Base 2.14.4
+ rsvg_load_policy_get_type@Base 2.36.1-1wm1
  rsvg_pixbuf_from_data_with_size_data@Base 2.14.4
  rsvg_pixbuf_from_file@Base 2.14.4
  rsvg_pixbuf_from_file_at_max_size@Base 2.14.4

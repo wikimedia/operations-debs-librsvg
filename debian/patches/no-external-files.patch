@@ -1,0 +1,349 @@
+Index: librsvg/rsvg-base-file-util.c
+===================================================================
+--- librsvg.orig/rsvg-base-file-util.c	2012-10-18 20:19:35.288876594 +1100
++++ librsvg/rsvg-base-file-util.c	2012-10-18 20:36:25.593597393 +1100
+@@ -45,6 +45,44 @@
+ }
+ 
+ /**
++ * rsvg_handle_fill_from_file:
++ * @handle RsvgHandle
++ * @file_name The file name or URI to load from
++ * @error: The return location for errors
++ *
++ * Load the SVG data from a file into the specified handle, which must have
++ * already been initialised with rsvg_handle_new ().
++ *
++ * Returns: TRUE on success, FALSE on failure.
++ * Since: 2.37
++ */
++gboolean
++rsvg_handle_fill_from_file (RsvgHandle * handle,
++                            const gchar * file_name, 
++                            GError ** error)
++{
++    gchar *base_uri;
++    guint8 *data;
++    gsize data_len;
++
++    rsvg_return_val_if_fail (file_name != NULL, NULL, error);
++
++    base_uri = rsvg_handle_get_base_uri (handle);
++    data = _rsvg_io_acquire_data (file_name, base_uri, NULL, &data_len, NULL, error);
++
++    if (data) {
++        if (!rsvg_handle_fill_with_data (handle, data, data_len, error)) {
++            return FALSE;
++        }
++        g_free (data);
++        return TRUE;
++    }
++
++    return FALSE;
++}
++
++
++/**
+  * rsvg_handle_new_from_data:
+  * @data: (array length=data_len): The SVG data
+  * @data_len: The length of #data, in bytes
+@@ -86,23 +124,17 @@
+ rsvg_handle_new_from_file (const gchar * file_name, GError ** error)
+ {
+     gchar *base_uri;
+-    guint8 *data;
+-    gsize data_len;
+     RsvgHandle *handle = NULL;
+ 
+     rsvg_return_val_if_fail (file_name != NULL, NULL, error);
+ 
+     base_uri = rsvg_get_base_uri_from_filename (file_name);
+-    data = _rsvg_io_acquire_data (file_name, base_uri, NULL, &data_len, NULL, error);
+-
+-    if (data) {
+-        handle = rsvg_handle_new ();
+-        rsvg_handle_set_base_uri (handle, base_uri);
+-        if (!rsvg_handle_fill_with_data (handle, data, data_len, error)) {
+-            g_object_unref (handle);
+-            handle = NULL;
+-        }
+-        g_free (data);
++    handle = rsvg_handle_new ();
++    rsvg_handle_set_base_uri (handle, base_uri);
++    if (!rsvg_handle_fill_from_file (handle, file_name, error)) {
++        g_free (base_uri);
++        g_object_unref (handle);
++        return NULL;
+     }
+ 
+     g_free (base_uri);
+Index: librsvg/rsvg-base.c
+===================================================================
+--- librsvg.orig/rsvg-base.c	2012-10-18 20:19:35.288876594 +1100
++++ librsvg/rsvg-base.c	2012-10-18 20:36:25.597597452 +1100
+@@ -1637,6 +1637,26 @@
+ }
+ 
+ /**
++ * rsvg_handle_set_load_policy
++ * @handle: An #RsvgHandle
++ * @policy: A member of enum #RsvgLoadPolicy
++ * 
++ * Set the security policy for loading external resources during rendering:
++ *
++ *   - RSVG_LOAD_POLICY_ALL_PERMISSIVE: Allow any GVFS URI
++ *   - RSVG_LOAD_POLICY_DATA_ONLY: Allow only the data URI
++ *   - RSVG_LOAD_POLICY_NONE: Do not allow external resources
++ */
++void
++rsvg_handle_set_load_policy (RsvgHandle * handle,
++                            RsvgLoadPolicy policy)
++{
++    g_return_if_fail (handle != NULL);
++
++    handle->priv->load_policy = policy;
++}
++
++/**
+  * rsvg_handle_write:
+  * @handle: an #RsvgHandle
+  * @buf: (array length=count) (element-type uint8): pointer to svg data
+@@ -2148,10 +2168,25 @@
+ {
+     RsvgLoadPolicy policy = handle->priv->load_policy;
+ 
+-    if (policy == RSVG_LOAD_POLICY_ALL_PERMISSIVE)
+-        return TRUE;
+-
+-    return TRUE;
++    switch (policy) {
++        case RSVG_LOAD_POLICY_ALL_PERMISSIVE:
++            return TRUE;
++        case RSVG_LOAD_POLICY_DATA_ONLY:
++            if (!strncmp (uri, "data:", 5)) {
++                return TRUE;
++            } else {
++                g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                        "External files are not allowed");
++                return FALSE;
++            }
++        case RSVG_LOAD_POLICY_NONE:
++            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                    "External files are not allowed");
++            return FALSE;
++        default:
++            g_assert_not_reached();
++            return FALSE;
++    }
+ }
+ 
+ guint8* 
+Index: librsvg/rsvg-convert.c
+===================================================================
+--- librsvg.orig/rsvg-convert.c	2012-10-18 20:36:25.577597129 +1100
++++ librsvg/rsvg-convert.c	2012-10-18 20:36:53.914069076 +1100
+@@ -66,42 +66,27 @@
+     }
+ }
+ 
+-static RsvgHandle *
+-rsvg_handle_new_from_stdio_file (FILE * f, GError ** error)
++static gboolean
++rsvg_convert_stdio_file (RsvgHandle *handle, FILE * f, GError ** error)
+ {
+-    RsvgHandle *handle;
+-    gchar *current_dir;
+-    gchar *base_uri;
+-
+-    handle = rsvg_handle_new ();
+-
+     while (!feof (f)) {
+         guchar buffer[4096];
+         gsize length = fread (buffer, 1, sizeof (buffer), f);
+ 
+         if (length > 0) {
+             if (!rsvg_handle_write (handle, buffer, length, error)) {
+-                g_object_unref (handle);
+-                return NULL;
++                return FALSE;
+             }
+         } else if (ferror (f)) {
+-            g_object_unref (handle);
+-            return NULL;
++            return FALSE;
+         }
+     }
+ 
+     if (!rsvg_handle_close (handle, error)) {
+-        g_object_unref (handle);
+-        return NULL;
++        return FALSE;
+     }
+ 
+-    current_dir = g_get_current_dir ();
+-    base_uri = g_build_filename (current_dir, "file.svg", NULL);
+-    rsvg_handle_set_base_uri (handle, base_uri);
+-    g_free (base_uri);
+-    g_free (current_dir);
+-
+-    return handle;
++    return TRUE;
+ }
+ 
+ static void
+@@ -132,11 +117,15 @@
+     int width = -1;
+     int height = -1;
+     int bVersion = 0;
++
+     char *format = NULL;
+     char *output = NULL;
+     int keep_aspect_ratio = FALSE;
+     guint32 background_color = 0;
+     char *background_color_str = NULL;
++    RsvgLoadPolicy load_policy = RSVG_LOAD_POLICY_ALL_PERMISSIVE;
++    char * load_policy_str = NULL;
++    int no_external_files = FALSE;
+     char *base_uri = NULL;
+     gboolean using_stdin = FALSE;
+     GError *error = NULL;
+@@ -173,6 +162,11 @@
+          N_("whether to preserve the aspect ratio [optional; defaults to FALSE]"), NULL},
+         {"background-color", 'b', 0, G_OPTION_ARG_STRING, &background_color_str,
+          N_("set the background color [optional; defaults to None]"), N_("[black, white, #abccee, #aaa...]")},
++        {"load-policy", '\0', 0, G_OPTION_ARG_STRING, &load_policy_str,
++         N_("security policy for loading external files [optional; defaults to all]"),
++         N_("[all, data, none]")},
++        {"no-external-files", '\0', 0, G_OPTION_ARG_NONE, &no_external_files,
++         N_("do not allow external files except for data URIs. Equivalent to --load-policy=data.")},
+         {"version", 'v', 0, G_OPTION_ARG_NONE, &bVersion, N_("show version information"), NULL},
+         {"base-uri", 'b', 0, G_OPTION_ARG_STRING, &base_uri, N_("base uri"), NULL},
+         {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &args, NULL, N_("[FILE...]")},
+@@ -211,6 +205,22 @@
+         g_free (output);
+     }
+ 
++    // Determine load policy
++    if (load_policy_str) {
++        if (!strcmp (load_policy_str, "all"))
++            load_policy = RSVG_LOAD_POLICY_ALL_PERMISSIVE;
++        else if (!strcmp (load_policy_str, "data"))
++            load_policy = RSVG_LOAD_POLICY_DATA_ONLY;
++        else if (!strcmp (load_policy_str, "none"))
++            load_policy = RSVG_LOAD_POLICY_NONE;
++        else {
++            fprintf (stderr, _("Invalid load policy \"%s\", must be \"all\", \"data\" or \"none\".\n"), load_policy_str);
++            exit (1);
++        }
++    } else if (no_external_files) {
++        load_policy = RSVG_LOAD_POLICY_DATA_ONLY;
++    }
++
+     if (args)
+         while (args[n_args] != NULL)
+             n_args++;
+@@ -229,25 +239,39 @@
+     rsvg_set_default_dpi_x_y (dpi_x, dpi_y);
+ 
+     for (i = 0; i < n_args; i++) {
++        gboolean success;
++
++        rsvg = rsvg_handle_new ();
++        rsvg_handle_set_load_policy (rsvg, load_policy);
++
++        if (base_uri)
++            rsvg_handle_set_base_uri (rsvg, base_uri);
++        else {
++            if (using_stdin) {
++                gchar * current_dir = g_get_current_dir ();
++                char * filename_base = g_build_filename (current_dir, "file.svg", NULL);
++                rsvg_handle_set_base_uri (rsvg, filename_base);
++                g_free (filename_base);
++            } else
++                rsvg_handle_set_base_uri (rsvg, args[i]);
++        }
++
++        /* in the case of multi-page output, all subsequent SVGs are scaled to the first's size */
++        rsvg_handle_set_size_callback (rsvg, rsvg_cairo_size_callback, &dimensions, NULL);
+ 
+         if (using_stdin)
+-            rsvg = rsvg_handle_new_from_stdio_file (stdin, &error);
++            success = rsvg_convert_stdio_file (rsvg, stdin, &error);
+         else
+-            rsvg = rsvg_handle_new_from_file (args[i], &error);
++            success = rsvg_handle_fill_from_file (rsvg, args[i], &error);
+ 
+-        if (!rsvg) {
++        if (!success) {
+             fprintf (stderr, _("Error reading SVG:"));
+             display_error (error);
+             fprintf (stderr, "\n");
++            g_object_unref (rsvg);
+             exit (1);
+         }
+ 
+-        if (base_uri)
+-            rsvg_handle_set_base_uri (rsvg, base_uri);
+-
+-        /* in the case of multi-page output, all subsequent SVGs are scaled to the first's size */
+-        rsvg_handle_set_size_callback (rsvg, rsvg_cairo_size_callback, &dimensions, NULL);
+-
+         if (i == 0) {
+             struct RsvgSizeCallbackData size_data;
+ 
+Index: librsvg/rsvg-private.h
+===================================================================
+--- librsvg.orig/rsvg-private.h	2012-10-18 20:19:35.292876654 +1100
++++ librsvg/rsvg-private.h	2012-10-18 20:36:25.597597452 +1100
+@@ -122,12 +122,6 @@
+     void (*characters) (RsvgSaxHandler * self, const char *ch, int len);
+ };
+ 
+-typedef enum {
+-    RSVG_LOAD_POLICY_ALL_PERMISSIVE
+-} RsvgLoadPolicy;
+-
+-#define RSVG_LOAD_POLICY_DEFAULT (RSVG_LOAD_POLICY_ALL_PERMISSIVE)
+-
+ struct RsvgHandlePrivate {
+     RsvgHandleFlags flags;
+ 
+Index: librsvg/rsvg.h
+===================================================================
+--- librsvg.orig/rsvg.h	2012-10-18 20:19:35.292876654 +1100
++++ librsvg/rsvg.h	2012-10-18 20:36:25.597597452 +1100
+@@ -63,6 +63,14 @@
+ #define RSVG_ERROR (rsvg_error_quark ())
+ GQuark rsvg_error_quark (void) G_GNUC_CONST;
+ 
++typedef enum {
++    RSVG_LOAD_POLICY_ALL_PERMISSIVE,
++    RSVG_LOAD_POLICY_DATA_ONLY,
++    RSVG_LOAD_POLICY_NONE,
++} RsvgLoadPolicy;
++
++#define RSVG_LOAD_POLICY_DEFAULT (RSVG_LOAD_POLICY_ALL_PERMISSIVE)
++
+ /**
+  * The RsvgHandle is an object representing the parsed form of a SVG
+  */
+@@ -126,6 +134,8 @@
+ void rsvg_handle_set_dpi	(RsvgHandle * handle, double dpi);
+ void rsvg_handle_set_dpi_x_y	(RsvgHandle * handle, double dpi_x, double dpi_y);
+ 
++void rsvg_handle_set_load_policy	(RsvgHandle * handle, RsvgLoadPolicy policy);
++
+ RsvgHandle  *rsvg_handle_new		(void);
+ gboolean     rsvg_handle_write		(RsvgHandle * handle, const guchar * buf, 
+                                      gsize count, GError ** error);
+@@ -171,6 +181,10 @@
+                                               GCancellable   *cancellable,
+                                               GError        **error);
+ 
++gboolean rsvg_handle_fill_from_file (RsvgHandle * handle,
++                                     const gchar * file_name, 
++                                     GError ** error);
++
+ RsvgHandle *rsvg_handle_new_from_data (const guint8 * data, gsize data_len, GError ** error);
+ RsvgHandle *rsvg_handle_new_from_file (const gchar * file_name, GError ** error);
+ 

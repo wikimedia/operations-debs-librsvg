@@ -1,0 +1,13 @@
+Index: librsvg/rsvg-convert.c
+===================================================================
+--- librsvg.orig/rsvg-convert.c	2012-10-18 15:05:05.000000000 +1100
++++ librsvg/rsvg-convert.c	2012-10-18 15:18:20.699873126 +1100
+@@ -196,7 +196,7 @@
+     g_option_context_free (g_option_context);
+ 
+     if (bVersion != 0) {
+-        printf (_("rsvg-convert version %s\n"), VERSION);
++        printf (_("rsvg-convert version %s (Wikimedia)\n"), VERSION);
+         return 0;
+     }
+ 

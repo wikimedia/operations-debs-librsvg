@@ -356,9 +356,3 @@ rsvg_handle_new_with_flags (RsvgHandleFlags flags)
                          "flags", flags,
                          NULL);
 }
-
-RsvgHandle *
-rsvg_handle_new_gz (void)
-{
-    return rsvg_handle_new ();
-}

@@ -1,7 +1,7 @@
-Index: librsvg-2.36.1/rsvg-gobject.c
+Index: librsvg/rsvg-gobject.c
 ===================================================================
---- librsvg-2.36.1.orig/rsvg-gobject.c	2012-02-07 17:38:41.000000000 +0100
-+++ librsvg-2.36.1/rsvg-gobject.c	2012-04-16 22:38:06.108668254 +0200
+--- librsvg.orig/rsvg-gobject.c	2012-10-18 17:04:40.000000000 +1100
++++ librsvg/rsvg-gobject.c	2012-10-18 17:05:21.456339611 +1100
 @@ -356,3 +356,9 @@
                           "flags", flags,
                           NULL);
