@@ -1,3 +1,10 @@
+librsvg (2.36.1-1wm2) precise-wikimedia; urgency=medium
+
+  * Apply patch of https://bugzilla.gnome.org/show_bug.cgi?id=620923
+    and fix SVG path data number parsing issue
+
+ -- Ebrahim Byagowi <ebrahim@gnu.org>  Sun, 16 Nov 2014 14:45:22 GMT+0330
+
 librsvg (2.36.1-1wm1) precise-wikimedia; urgency=low
 
   * Added a rewritten version of no-external-files.patch, submitted upstream
